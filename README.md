@@ -4,32 +4,30 @@ A modern web application for reading EPUB books and generating AI illustrations 
 
 ## Features
 - **EPUB Reader**: Upload and read EPUB books with bookmarks, navigation, and font controls.
-- **AI Image Generation**: Summarize the current page or selected text and generate illustrations using Cloudflare Workers AI.
-- **Art Style Selection**: Choose from multiple AI art styles (Cyberpunk, Fantasy, Futuristic, Abstract, Retro Wave, Sci-Fi, Custom) — your choice is persistent and always used for new images.
+- **Dual AI Modes**:
+  - **Static Mode**: Generate AI illustrations from page content or selected text
+  - **Streaming Mode**: Real-time AI video generation with webcam integration
+- **AI Image Generation**: Intelligent text summarization and illustration creation
+- **Art Style Selection**: Choose from multiple AI art styles (Futuristic, Fantasy, Cyberpunk, Anime, and more) — your choice is persistent
+- **Multi-language Support**: Full internationalization (Russian/English)
 
 ## AI Models Used
 
-- **Image Generation:** [Stable Diffusion XL](https://developers.cloudflare.com/workers-ai/models/image-generation/stable-diffusion-xl/) (via Cloudflare Workers AI)
-- **Text Summarization:**
-  - **Primary:** [AI Summary Agent](https://ai.io.net/ai/agents) (multilanguages)
-  - **Fallback:** [Facebook BART](https://developers.cloudflare.com/workers-ai/models/bart-large-cnn/) (via Cloudflare Workers AI)
+- **Text Summarization:** [AI Summary Agent](https://intelligence.io.solutions/) (via io.net)
+- **Image Generation:** [Stable Diffusion models](https://daydream.live/) (via Daydream API)
+- **Streaming AI:** Real-time AI video generation (via Daydream API)
 
-> The app uses the AI agent API for text summarization by default. If that service is unavailable (limit), it automatically falls back to Cloudflare Workers AI (BART model). Image generation always uses Cloudflare Workers AI (Stable Diffusion XL). You can swap models or endpoints in the code as needed.
-
-## Screenshot
-
-![sova Screenshot](screenshort.png)
-
+> The app uses io.net's AI agents for intelligent text summarization and Daydream's streaming API for AI image and video generation. The streaming mode provides real-time AI-generated content based on your EPUB reading.
 
 ## Local Development
 
 Follow these steps to set up Sova locally:
 
 1. **Clone the repository**
-   ```bash
-   git clone https://github.com/alekcangp/sova.git
-   cd sova
-   ```
+    ```bash
+    git clone https://github.com/alekcangp/daydreambook.git
+    cd daydreambook
+    ```
 
 2. **Install dependencies**
    ```bash
@@ -37,11 +35,10 @@ Follow these steps to set up Sova locally:
    ```
 
 3. **Set up environment variables**
-   - Copy `.env.example` to `.env`
-   - Fill in your Cloudflare Workers AI credentials:
-     - `CLOUDFLARE_ACCOUNT_ID`
-     - `CLOUDFLARE_API_TOKEN`
-   - (Optional) Set up io.net API key if using their services
+    - Copy `.env.example` to `.env`
+    - Fill in your API credentials:
+      - `VITE_IO_API_KEY`: Get from [io.net](https://intelligence.io.solutions/)
+      - `VITE_DAYDREAM_API_KEY`: Get from [Daydream](https://app.daydream.live/beta/api-key)
 
 4. **Start the development server**
    ```bash
@@ -59,7 +56,7 @@ Follow these steps to set up Sova locally:
 
 - Click the button below to deploy your own instance to Vercel with one click:
 
-  [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/import/project?template=https://github.com/alekcangp/sova)
+  [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/import/project?template=https://github.com/alekcangp/daydreambook)
 
 - Ensure all environment variables are set in the Vercel dashboard (case-sensitive). See `.env.example` for required variables.
 
