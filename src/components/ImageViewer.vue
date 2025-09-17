@@ -44,6 +44,8 @@
           </li>
         </ul>
       </div>
+
+
       <div class="external-links">
         <button
           @click="switchLanguage"
@@ -78,10 +80,13 @@
           </svg>
         </a> -->
       </div>
-      
+
     </div>
   </div>
     <div class="image-container">
+      <!-- Hidden canvas for noise processing -->
+      <canvas ref="webcamCanvas" class="webcam-canvas" style="display: none;"></canvas>
+
       <!-- Always show streaming player container -->
       <div class="streaming-mode-container">
         <!-- Always show iframe container -->
@@ -160,6 +165,7 @@
 import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue';
 import { useI18n } from '../composables/useI18n';
 import DaydreamService from '../services/daydreamService';
+import { createNoise2D } from 'simplex-noise';
 
 interface Props {
   aiMode?: 'static' | 'streaming';
@@ -260,6 +266,18 @@ const whipClient = ref<RTCPeerConnection | null>(null);
 const iframeKey = ref(0);
 const iframeLoaded = ref(false);
 
+// Noise processing
+const noise2D = createNoise2D();
+const webcamCanvas = ref<HTMLCanvasElement | null>(null);
+const processedStream = ref<MediaStream | null>(null);
+const animationFrame = ref<number | null>(null);
+const noiseScale = ref(0.1); // Fixed at maximum scale
+const noiseIntensity = ref(1.0); // Fixed at maximum intensity
+const timeOffset = ref(0);
+
+// Computed property to check if noise should be applied
+const hasNoise = computed(() => noiseScale.value > 0 && noiseIntensity.value > 0);
+
 const selectedStyle = ref(
   ArtStyles.includes(props.selectedArtStyle as any)
     ? props.selectedArtStyle
@@ -313,6 +331,11 @@ async function startStreaming() {
     console.log('   Video tracks:', localStream.value.getVideoTracks().length);
     console.log('   Audio tracks:', localStream.value.getAudioTracks().length);
 
+    // Start noise processing (always, since sliders control the effect)
+    console.log('🎨 Starting noise processing...');
+    await startNoiseProcessing();
+    console.log('✅ Noise processing started and stream ready');
+
     // Create stream with Daydream API
     console.log('🚀 Creating Daydream stream...');
     console.log('   API Key configured:', !!import.meta.env.VITE_DAYDREAM_API_KEY);
@@ -343,7 +366,10 @@ async function startStreaming() {
       isConnecting: isConnecting.value,
       isConnected: isConnected.value,
       playbackId: playbackId.value,
-      iframeKey: iframeKey.value
+      iframeKey: iframeKey.value,
+      usingProcessedStream: hasNoise.value && processedStream.value !== null,
+      noiseScale: noiseScale.value,
+      noiseIntensity: noiseIntensity.value
     });
 
     // Emit stream created event
@@ -385,6 +411,9 @@ async function startStreaming() {
 
 async function stopStreaming() {
   try {
+    // Stop noise processing
+    stopNoiseProcessing();
+
     if (whipClient.value) {
       whipClient.value.close();
       whipClient.value = null;
@@ -395,6 +424,11 @@ async function stopStreaming() {
       localStream.value = null;
     }
 
+    if (processedStream.value) {
+      processedStream.value.getTracks().forEach(track => track.stop());
+      processedStream.value = null;
+    }
+
     streamId.value = null;
     playbackId.value = null;
     isStreaming.value = false;
@@ -402,6 +436,98 @@ async function stopStreaming() {
   } catch (error) {
     console.error('Error stopping stream:', error);
   }
+}
+
+
+async function startNoiseProcessing() {
+  return new Promise<void>((resolve) => {
+    if (!webcamCanvas.value || !localStream.value) {
+      resolve();
+      return;
+    }
+
+    const canvas = webcamCanvas.value;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      resolve();
+      return;
+    }
+
+    // Create video element to capture webcam
+    const video = document.createElement('video');
+    video.srcObject = localStream.value;
+    video.autoplay = true;
+    video.muted = true;
+
+    video.onloadedmetadata = () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // Create processed stream from canvas
+      processedStream.value = canvas.captureStream(30);
+
+      const processFrame = () => {
+        if (!ctx) return;
+  
+        // Draw video frame to canvas
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  
+        // Apply simplex noise if active
+        if (hasNoise.value) {
+          applyNoise(ctx, canvas.width, canvas.height);
+        }
+  
+        // Continue processing
+        animationFrame.value = requestAnimationFrame(processFrame);
+      };
+
+      processFrame();
+      resolve();
+    };
+
+    // Fallback timeout in case video doesn't load
+    setTimeout(() => {
+      resolve();
+    }, 2000);
+  });
+}
+
+function stopNoiseProcessing() {
+  if (animationFrame.value) {
+    cancelAnimationFrame(animationFrame.value);
+    animationFrame.value = null;
+  }
+  if (processedStream.value) {
+    processedStream.value.getTracks().forEach(track => track.stop());
+    processedStream.value = null;
+  }
+}
+
+function applyNoise(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+
+  timeOffset.value += 0.01; // Animate the noise over time
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = (y * width + x) * 4;
+
+      // Generate simplex noise value
+      const noiseValue = noise2D(x * noiseScale.value, y * noiseScale.value + timeOffset.value);
+
+      // Convert noise to RGB offset
+      const offset = Math.floor(noiseValue * 255 * noiseIntensity.value);
+
+      // Apply noise to each color channel
+      data[index] = Math.max(0, Math.min(255, data[index] + offset));     // Red
+      data[index + 1] = Math.max(0, Math.min(255, data[index + 1] + offset)); // Green
+      data[index + 2] = Math.max(0, Math.min(255, data[index + 2] + offset)); // Blue
+      // Alpha channel remains unchanged
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
 }
 
 async function connectWhip(whipUrl: string) {
@@ -425,11 +551,17 @@ async function connectWhip(whipUrl: string) {
       ]
     });
 
-    console.log('📹 Adding local stream tracks...');
-    // Add local stream tracks
-    localStream.value.getTracks().forEach((track, index) => {
+    console.log('📹 Adding stream tracks...');
+    // Use processed stream if noise is active, otherwise use local stream
+    const streamToUse = hasNoise.value && processedStream.value ? processedStream.value : localStream.value;
+    if (!streamToUse) {
+      throw new Error('No stream available for WebRTC connection');
+    }
+
+    // Add stream tracks
+    streamToUse.getTracks().forEach((track, index) => {
       console.log(`   Track ${index}: ${track.kind}, enabled: ${track.enabled}, readyState: ${track.readyState}`);
-      pc.addTrack(track, localStream.value!);
+      pc.addTrack(track, streamToUse!);
     });
 
     // Set up event handlers
@@ -857,6 +989,12 @@ onUnmounted(() => {
     clearTimeout(streamStartTimeout);
     streamStartTimeout = null;
   }
+  stopNoiseProcessing();
+});
+
+// Expose methods to parent
+defineExpose({
+  // No methods needed for fixed noise parameters
 });
 
 // Check iframe visibility on mount
@@ -1484,6 +1622,5 @@ onMounted(async () => {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
 }
-
 
 </style>

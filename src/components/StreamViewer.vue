@@ -21,6 +21,7 @@
       <div v-if="showWebcam" class="webcam-section">
         <div class="webcam-container">
           <video ref="webcamVideo" class="webcam-video" autoplay muted playsinline></video>
+          <canvas ref="webcamCanvas" class="webcam-canvas" :class="{ active: noiseEnabled }"></canvas>
           <div class="webcam-overlay">
             <svg class="webcam-indicator" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
@@ -33,6 +34,12 @@
           <button @click="toggleWebcam" class="webcam-toggle" :title="t.toggleWebcam">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1 7 2c2.7 0 5.25-1.07 7-3A7.37 7.37 0 0 0 23 3z"/>
+            </svg>
+          </button>
+          <button @click="toggleNoise" class="noise-toggle" :class="{ active: noiseEnabled }" :title="noiseEnabled ? 'Disable Noise' : 'Enable Noise'">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 12h2M20 12h2M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+              <circle cx="12" cy="12" r="3"/>
             </svg>
           </button>
         </div>
@@ -172,15 +179,42 @@
         <!-- Seed -->
         <div class="control-group">
           <label>{{ t.randomSeed }}:</label>
-          <input 
-            v-model.number="seed" 
-            type="number" 
+          <input
+            v-model.number="seed"
+            type="number"
             class="control-input"
             min="0"
             max="999999"
             @input="updateParams"
           />
           <button @click="randomizeSeed" class="seed-randomize">{{ t.randomize }}</button>
+        </div>
+
+        <!-- Noise Controls -->
+        <div v-if="noiseEnabled" class="control-group">
+          <label>Noise Scale:</label>
+          <input
+            v-model.number="noiseScale"
+            type="range"
+            min="0.001"
+            max="0.1"
+            step="0.001"
+            class="control-slider"
+          />
+          <span class="slider-value">{{ noiseScale.toFixed(3) }}</span>
+        </div>
+
+        <div v-if="noiseEnabled" class="control-group">
+          <label>Noise Intensity:</label>
+          <input
+            v-model.number="noiseIntensity"
+            type="range"
+            min="0.1"
+            max="1.0"
+            step="0.1"
+            class="control-slider"
+          />
+          <span class="slider-value">{{ noiseIntensity.toFixed(1) }}</span>
         </div>
       </div>
     </div>
@@ -191,6 +225,7 @@
 import { ref, onUnmounted, watch, nextTick } from 'vue';
 import { useI18n } from '../composables/useI18n';
 import DaydreamService from '../services/daydreamService';
+import { createNoise2D } from 'simplex-noise';
 
 interface Props {
   bookTitle?: string;
@@ -225,8 +260,18 @@ const currentStreamId = ref<string | null>(null);
 const currentWhipUrl = ref<string | null>(null);
 
 const webcamVideo = ref<HTMLVideoElement | null>(null);
+const webcamCanvas = ref<HTMLCanvasElement | null>(null);
 const localStream = ref<MediaStream | null>(null);
+const processedStream = ref<MediaStream | null>(null);
 const webRtcConnection = ref<RTCPeerConnection | null>(null);
+
+// Noise processing
+const noiseEnabled = ref(false);
+const noise2D = createNoise2D();
+const animationFrame = ref<number | null>(null);
+const noiseScale = ref(0.01);
+const noiseIntensity = ref(0.3);
+const timeOffset = ref(0);
 
 const showControls = ref(false);
 const currentPrompt = ref('');
@@ -379,13 +424,25 @@ const startWebcam = async () => {
       video: { width: 1280, height: 720 },
       audio: false
     });
-    
+
     if (webcamVideo.value && localStream.value) {
       webcamVideo.value.srcObject = localStream.value;
       await nextTick();
       webcamVideo.value.play();
+
+      // Wait for video to load metadata
+      await new Promise((resolve) => {
+        if (webcamVideo.value) {
+          webcamVideo.value.onloadedmetadata = resolve;
+        }
+      });
+
+      // Start noise processing if enabled
+      if (noiseEnabled.value) {
+        startNoiseProcessing();
+      }
     }
-    
+
     showWebcam.value = true;
   } catch (error: any) {
     console.error('Failed to access webcam:', error);
@@ -395,15 +452,23 @@ const startWebcam = async () => {
 };
 
 const stopWebcam = async () => {
+  // Stop noise processing
+  stopNoiseProcessing();
+
   if (localStream.value) {
     localStream.value.getTracks().forEach(track => track.stop());
     localStream.value = null;
   }
-  
+
+  if (processedStream.value) {
+    processedStream.value.getTracks().forEach(track => track.stop());
+    processedStream.value = null;
+  }
+
   if (webcamVideo.value) {
     webcamVideo.value.srcObject = null;
   }
-  
+
   showWebcam.value = false;
 };
 
@@ -415,8 +480,84 @@ const toggleWebcam = () => {
   }
 };
 
+const toggleNoise = () => {
+  noiseEnabled.value = !noiseEnabled.value;
+  if (noiseEnabled.value) {
+    startNoiseProcessing();
+  } else {
+    stopNoiseProcessing();
+  }
+};
+
+const startNoiseProcessing = () => {
+  if (!webcamVideo.value || !webcamCanvas.value) return;
+
+  const canvas = webcamCanvas.value;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  canvas.width = webcamVideo.value.videoWidth;
+  canvas.height = webcamVideo.value.videoHeight;
+
+  // Create a stream from the canvas
+  processedStream.value = canvas.captureStream(30); // 30 FPS
+
+  const processFrame = () => {
+    if (!noiseEnabled.value || !webcamVideo.value || !ctx) return;
+
+    // Draw the video frame to canvas
+    ctx.drawImage(webcamVideo.value, 0, 0, canvas.width, canvas.height);
+
+    // Apply simplex noise
+    applyNoise(ctx, canvas.width, canvas.height);
+
+    // Continue processing
+    animationFrame.value = requestAnimationFrame(processFrame);
+  };
+
+  processFrame();
+};
+
+const stopNoiseProcessing = () => {
+  if (animationFrame.value) {
+    cancelAnimationFrame(animationFrame.value);
+    animationFrame.value = null;
+  }
+};
+
+const applyNoise = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+
+  timeOffset.value += 0.01; // Animate the noise over time
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = (y * width + x) * 4;
+
+      // Generate simplex noise value
+      const noiseValue = noise2D(x * noiseScale.value, y * noiseScale.value + timeOffset.value);
+
+      // Convert noise to RGB offset
+      const offset = Math.floor(noiseValue * 255 * noiseIntensity.value);
+
+      // Apply noise to each color channel
+      data[index] = Math.max(0, Math.min(255, data[index] + offset));     // Red
+      data[index + 1] = Math.max(0, Math.min(255, data[index + 1] + offset)); // Green
+      data[index + 2] = Math.max(0, Math.min(255, data[index + 2] + offset)); // Blue
+      // Alpha channel remains unchanged
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+};
+
 const connectWebRTC = async () => {
-  if (!currentWhipUrl.value || !localStream.value) return;
+  if (!currentWhipUrl.value) return;
+
+  // Use processed stream if noise is enabled, otherwise use local stream
+  const streamToUse = noiseEnabled.value && processedStream.value ? processedStream.value : localStream.value;
+  if (!streamToUse) return;
 
   try {
     webRtcConnection.value = new RTCPeerConnection({
@@ -426,9 +567,9 @@ const connectWebRTC = async () => {
       ]
     });
 
-    // Add local stream to connection
-    localStream.value.getTracks().forEach(track => {
-      webRtcConnection.value!.addTrack(track, localStream.value!);
+    // Add stream to connection
+    streamToUse.getTracks().forEach(track => {
+      webRtcConnection.value!.addTrack(track, streamToUse);
     });
 
     webRtcConnection.value.onicecandidate = (event) => {
@@ -566,6 +707,7 @@ watch(() => props.selectedText, (newText) => {
 // Cleanup on unmount
 onUnmounted(() => {
   stopStream();
+  stopNoiseProcessing();
   if (debounceTimer) clearTimeout(debounceTimer);
 });
 </script>
@@ -737,6 +879,21 @@ onUnmounted(() => {
   object-fit: cover;
 }
 
+.webcam-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.webcam-canvas.active {
+  opacity: 1;
+}
+
 .webcam-overlay {
   position: absolute;
   top: 12px;
@@ -783,6 +940,32 @@ onUnmounted(() => {
   background: var(--color-secondary);
   color: white;
   border-color: var(--color-primary);
+}
+
+.noise-toggle {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: 8px;
+}
+
+.noise-toggle:hover {
+  background: var(--color-secondary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.noise-toggle.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
 }
 
 .loading-state {

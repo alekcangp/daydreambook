@@ -104,6 +104,7 @@
         </div>
         <div class="image-pane">
           <ImageViewer
+            ref="imageViewerRef"
             :aiMode="aiMode"
             :imageUrl="currentGeneration?.imageUrl"
             :summary="currentGeneration?.summary"
@@ -188,6 +189,7 @@ const showUpload = ref(true); // controls upload UI (for drag-and-drop, optional
 const fileInput = ref<HTMLInputElement | null>(null);
 const bookViewerKey = ref(0);
 const bookViewerRef = ref();
+const imageViewerRef = ref();
 const showBookCover = ref(false);
 
 const aiService = new CloudflareAIService();
@@ -849,6 +851,12 @@ watch(() => props.aiMode, (newMode) => {
 watch(() => props.aiMode, (newMode) => {
   // If parent toggles mode, we just follow
   console.log('AI Mode changed to:', newMode);
+});
+
+
+// Expose methods to parent
+defineExpose({
+  // No methods needed for fixed noise parameters
 });
 </script>
 

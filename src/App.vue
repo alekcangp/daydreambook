@@ -28,6 +28,7 @@
       </svg>
       <span>{{ aiMode === 'streaming' ? t.staticMode : t.streamingMode }}</span>
     </button>
+
     
     <div class="app-info-overlay" v-if="showInfo">
       <div class="info-content">
@@ -153,6 +154,7 @@ const epubReaderRef = ref();
 .mode-toggle-btn svg {
   flex-shrink: 0;
 }
+
 
 .app-info-overlay {
   position: fixed;
