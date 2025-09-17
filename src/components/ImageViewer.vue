@@ -275,8 +275,7 @@ const noiseScale = ref(0.1); // Fixed at maximum scale
 const noiseIntensity = ref(1.0); // Fixed at maximum intensity
 const timeOffset = ref(0);
 
-// Computed property to check if noise should be applied
-const hasNoise = computed(() => noiseScale.value > 0 && noiseIntensity.value > 0);
+// Noise is always enabled with fixed parameters
 
 const selectedStyle = ref(
   ArtStyles.includes(props.selectedArtStyle as any)
@@ -367,7 +366,7 @@ async function startStreaming() {
       isConnected: isConnected.value,
       playbackId: playbackId.value,
       iframeKey: iframeKey.value,
-      usingProcessedStream: hasNoise.value && processedStream.value !== null,
+      usingProcessedStream: processedStream.value !== null,
       noiseScale: noiseScale.value,
       noiseIntensity: noiseIntensity.value
     });
@@ -472,10 +471,8 @@ async function startNoiseProcessing() {
         // Draw video frame to canvas
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   
-        // Apply simplex noise if active
-        if (hasNoise.value) {
-          applyNoise(ctx, canvas.width, canvas.height);
-        }
+        // Always apply simplex noise (noise is always enabled)
+        applyNoise(ctx, canvas.width, canvas.height);
   
         // Continue processing
         animationFrame.value = requestAnimationFrame(processFrame);
@@ -552,8 +549,8 @@ async function connectWhip(whipUrl: string) {
     });
 
     console.log('📹 Adding stream tracks...');
-    // Use processed stream if noise is active, otherwise use local stream
-    const streamToUse = hasNoise.value && processedStream.value ? processedStream.value : localStream.value;
+    // Always use processed stream (noise is always enabled)
+    const streamToUse = processedStream.value || localStream.value;
     if (!streamToUse) {
       throw new Error('No stream available for WebRTC connection');
     }
