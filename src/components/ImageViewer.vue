@@ -84,9 +84,6 @@
     </div>
   </div>
     <div class="image-container">
-      <!-- Hidden canvas for noise processing -->
-      <canvas ref="webcamCanvas" class="webcam-canvas" style="display: none;"></canvas>
-
       <!-- Always show streaming player container -->
       <div class="streaming-mode-container">
         <!-- Always show iframe container -->
@@ -163,15 +160,8 @@
     <div class="webcam-overlay" style="opacity: 0; pointer-events: none;">
       <div class="webcam-container">
         <video ref="webcamVideo" class="webcam-video" autoplay muted playsinline style="display: none;"></video>
-        <canvas ref="webcamCanvas" class="webcam-canvas" :class="{ active: isStreaming }"></canvas>
-        <div class="webcam-controls">
-          <button @click="toggleNoise" class="noise-toggle" :class="{ active: true }" title="Noise Effects Active">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M2 12h2M20 12h2M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
-        </div>
+        <canvas ref="webcamCanvas" class="webcam-canvas" :class="{ active: isStreaming }" style="display: block; opacity: 1;"></canvas>
+        <!-- Noise toggle button removed - noise is always enabled -->
       </div>
       <div class="webcam-label">WEBCAM INPUT</div>
     </div>
@@ -294,13 +284,6 @@ const noiseIntensity = ref(0.3); // Fixed at maximum intensity
 const timeOffset = ref(0);
 
 // Noise is always enabled with fixed parameters
-
-// Toggle noise function (noise is always enabled, but function is provided for future use)
-function toggleNoise() {
-  console.log('🎨 Noise toggle clicked - noise is always enabled');
-  // Noise is always enabled, so this function currently does nothing
-  // Could be used in the future to toggle noise on/off
-}
 
 const selectedStyle = ref('futuristic'); // Initialize with default
 const customStyle = ref(''); // Initialize with empty
@@ -1922,30 +1905,6 @@ onMounted(async () => {
   gap: 4px;
 }
 
-.noise-toggle {
-  background: rgba(0, 122, 255, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(10px);
-  color: white;
-}
-
-.noise-toggle:hover {
-  background: rgba(0, 122, 255, 1);
-  transform: scale(1.1);
-}
-
-.noise-toggle.active {
-  background: #34C759;
-  border-color: rgba(255, 255, 255, 0.5);
-}
 
 .webcam-label {
   background: rgba(0, 122, 255, 0.9);
