@@ -295,6 +295,13 @@ const timeOffset = ref(0);
 
 // Noise is always enabled with fixed parameters
 
+// Toggle noise function (noise is always enabled, but function is provided for future use)
+function toggleNoise() {
+  console.log('🎨 Noise toggle clicked - noise is always enabled');
+  // Noise is always enabled, so this function currently does nothing
+  // Could be used in the future to toggle noise on/off
+}
+
 const selectedStyle = ref('futuristic'); // Initialize with default
 const customStyle = ref(''); // Initialize with empty
 
