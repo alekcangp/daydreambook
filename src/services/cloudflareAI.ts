@@ -64,56 +64,24 @@ class CloudflareAIService {
 
   /**
    * Generate streaming content using Daydream API. Returns a stream URL or text response.
+   * NOTE: v1/generate endpoint removed - app now uses real-time streaming mode only
    */
-  async generateStream(prompt: string, style: string, signal?: AbortSignal): Promise<string> {
-    const daydreamApiKey = import.meta.env.VITE_DAYDREAM_API_KEY as string;
-    
-    if (!daydreamApiKey) {
-      console.error('Daydream API key not set in environment variables');
-      throw new Error('Streaming generation failed: API key missing');
-    }
-
-    try {
-      // For now, return a placeholder or call Daydream API
-      // This should be implemented based on Daydream API documentation
-      // For text streaming, we might get a response stream or URL
-      const response = await fetch('https://api.daydream.ai/v1/generate', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${daydreamApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          prompt: `${style} ${prompt}`,
-          model: 'text-davinci-003', // or appropriate Daydream model
-          max_tokens: 150,
-          temperature: 0.7
-        }),
-        signal
-      });
-
-      if (!response.ok) {
-        throw new Error(`Daydream streaming failed: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return data.choices?.[0]?.text || data.result || 'Unable to generate stream';
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        // Request was cancelled
-        throw error;
-      }
-      console.error('Streaming generation error:', error);
-      throw new Error(`Streaming generation failed: ${error.message}`);
-    }
+  async generateStream(prompt: string, style: string, _signal?: AbortSignal): Promise<string> {
+    // App now uses real-time streaming mode only
+    // This method is kept for compatibility but returns a placeholder
+    console.log('generateStream called - app uses streaming mode only, v1/generate endpoint removed');
+    return `Streaming mode active: ${style} ${prompt}`;
   }
 
   /**
    * Generate static image using Daydream API.
+   * NOTE: App now uses streaming mode only - this method returns placeholder
    */
-  async generateImage(prompt: string, style: string, signal?: AbortSignal): Promise<string> {
-    // For static images, use the same generateStream method but treat it as static
-    return this.generateStream(prompt, style, signal);
+  async generateImage(prompt: string, style: string, _signal?: AbortSignal): Promise<string> {
+    // App now uses real-time streaming mode only
+    // Static image generation disabled - use streaming mode instead
+    console.log('generateImage called - app uses streaming mode only, static generation disabled');
+    return `Streaming mode active: ${style} ${prompt}`;
   }
 
   async processPage(pageContent: string, style: string, signal?: AbortSignal): Promise<{ summary: string; streamContent: string }> {

@@ -168,7 +168,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  aiMode: 'static'
+  aiMode: 'streaming' // App now always uses streaming mode
 });
 
 
@@ -214,8 +214,7 @@ aiService.setOnSummarySuccess(async (summary: string, originalText: string) => {
   console.log('ℹ️ Daydream update will be handled by ImageViewer watcher');
 });
 
-// AbortController for AI image generation
-let imageGenAbortController: AbortController | null = null;
+// App uses streaming mode only - no static image generation abort controller needed
 
 type Bookmark = { positionId: string; label: string; timestamp: number; snippet?: string };
 const bookmarks = ref<Bookmark[]>([]);
@@ -335,73 +334,24 @@ function onFileInputChange(event: Event) {
   }
 
 const handleTextSelection = async (text: string) => {
-  console.log('📝 Text selection detected, waiting for IO API result before updating...');
+  console.log('📝 Text selection detected - app uses streaming mode only');
 
-  // If a generation is in progress, show 'Illustration canceled' for 1 second before starting new generation
-  if (isGeneratingImage.value && props.aiMode === 'static') {
-    wasGenerationCanceled.value = true;
-    isGeneratingImage.value = false;
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-
-  if (props.aiMode === 'static') {
-    // For static mode, still need to generate image immediately
-    await generateImageForSelection(text);
-  } else {
-    // For streaming mode, just initiate the summarization
-    // The IO callback will handle updating selectedText when ready
-    try {
-      console.log('🚀 Initiating text summarization for streaming mode...');
-      await aiService.summarizeText(text);
-      // selectedText will be updated by the IO callback when summarization completes
-    } catch (error) {
-      console.error('❌ Text summarization failed:', error);
-      // Fallback: use raw text if summarization fails
-      selectedText.value = text;
-      currentStreamPrompt.value = text;
-      console.log('📝 Using raw text as fallback for streaming selection');
-    }
-  }
-};
-
-let currentGenerationToken = 0;
-
-const generateImageForSelection = async (text: string, style?: string) => {
-  if (!text.trim()) return;
-  // Abort any in-progress generation
-  if (imageGenAbortController) {
-    imageGenAbortController.abort();
-  }
-  imageGenAbortController = new AbortController();
-  // Clear previous image immediately
-  currentGeneration.value = null;
-  isGeneratingImage.value = true;
-  wasGenerationCanceled.value = false;
-  const myToken = ++currentGenerationToken;
+  // App now always uses streaming mode
+  // Initiate the summarization - The IO callback will handle updating selectedText when ready
   try {
-    // Summarize the selected text first
-    const summary = await aiService.summarizeText(text, imageGenAbortController.signal);
-    if (!summary || !summary.trim()) throw new Error('No summary generated');
-    const imageUrl = await aiService.generateImage(summary, style || selectedArtStyle.value, imageGenAbortController.signal);
-    if (myToken !== currentGenerationToken) return; // Outdated
-    currentGeneration.value = {
-      summary,
-      imageUrl,
-      prompt: summary,
-      isLoading: false
-    };
-    wasGenerationCanceled.value = false;
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      wasGenerationCanceled.value = true;
-      return;
-    }
-    wasGenerationCanceled.value = false;
-    console.error('Failed to summarize or generate image:', error);
-  } finally {
-    if (myToken === currentGenerationToken) isGeneratingImage.value = false;
+    console.log('🚀 Initiating text summarization for streaming mode...');
+    await aiService.summarizeText(text);
+    // selectedText will be updated by the IO callback when summarization completes
+  } catch (error) {
+    console.error('❌ Text summarization failed:', error);
+    // Fallback: use raw text if summarization fails
+    selectedText.value = text;
+    currentStreamPrompt.value = text;
+    console.log('📝 Using raw text as fallback for streaming selection');
   }
 };
+
+// App now uses streaming mode only - static image generation removed
 
 // Streaming mode functions
 const updateStreamPrompt = async (prompt: string) => {
@@ -442,19 +392,10 @@ const regenerateCurrentImageWithStyle = async (style?: string) => {
   if (style && style !== selectedArtStyle.value) {
     selectedArtStyle.value = style;
   }
-  
-  if (props.aiMode === 'static') {
-    const content = selectedText.value;
-    if (content) {
-      await generateImageForSelection(content, style || selectedArtStyle.value);
-    } else {
-      await generateImageForCurrentPage(style || selectedArtStyle.value);
-    }
-  } else {
-    // In streaming mode, just update the style for future generations
-    // StreamViewer will handle live updates
-    console.log('Style updated for streaming mode:', style || selectedArtStyle.value);
-  }
+
+  // App now always uses streaming mode
+  // Just update the style for future generations - StreamViewer will handle live updates
+  console.log('Style updated for streaming mode:', style || selectedArtStyle.value);
 };
 
 const downloadImage = (imageUrl: string) => {
@@ -466,7 +407,7 @@ const downloadImage = (imageUrl: string) => {
   document.body.removeChild(link);
 };
 
-let imageGenDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+// App uses streaming mode only - no debounce timer needed for static image generation
 
 async function handlePageChange({ page, cfi }: { page: number; cfi: string }) {
   // Update currentPositionId after page change
@@ -474,7 +415,7 @@ async function handlePageChange({ page, cfi }: { page: number; cfi: string }) {
   if (pendingRestoreCfi) {
     if (cfi === pendingRestoreCfi) {
       // Arrived at the restored CFI, now allow saving
-      
+
       pendingRestoreCfi = null;
       if (cfiRestorationTimeout) {
         clearTimeout(cfiRestorationTimeout);
@@ -485,43 +426,36 @@ async function handlePageChange({ page, cfi }: { page: number; cfi: string }) {
       return;
     }
   }
-  
+
   if (cfi) {
     currentCfi.value = cfi;
     currentPageNumber.value = page;
-    
-    if (props.aiMode === 'static') {
-      // Debounce image generation for static mode
-      if (imageGenDebounceTimer) clearTimeout(imageGenDebounceTimer);
-      imageGenDebounceTimer = setTimeout(() => {
-        generateImageForCurrentPage(selectedArtStyle.value);
-      }, 500); // 500ms debounce
-    } else {
-      // For streaming mode, get page text and update prompt
-      const text = await bookViewerRef.value?.getCurrentPageText?.();
-      if (text && text.trim().length > 0) {
-        currentPageText.value = text; // Store raw page text
 
-        // Initiate summarization - IO callback will handle the update
-        try {
-          console.log('📖 Page changed - initiating summarization for Daydream update');
-          console.log('📄 Current page text length:', text.length);
+    // App now always uses streaming mode
+    // Get page text and update prompt
+    const text = await bookViewerRef.value?.getCurrentPageText?.();
+    if (text && text.trim().length > 0) {
+      currentPageText.value = text; // Store raw page text
 
-          await aiService.summarizeText(text);
-          // selectedText and currentStreamPrompt will be updated by IO callback
-        } catch (error) {
-          console.warn('⚠️ Summarization failed, using raw text:', error);
-          const newPrompt = text.slice(0, 200);
-          selectedText.value = newPrompt;
-          currentStreamPrompt.value = newPrompt;
+      // Initiate summarization - IO callback will handle the update
+      try {
+        console.log('📖 Page changed - initiating summarization for streaming mode');
+        console.log('📄 Current page text length:', text.length);
 
-          console.log('📝 Using raw text for stream prompt:', newPrompt.slice(0, 100) + '...');
-        }
-      } else {
-        console.log('📭 No text content found on current page');
-        selectedText.value = `${bookMetadata.value?.title || 'Unknown Book'} - page ${page}`;
-        currentStreamPrompt.value = selectedText.value;
+        await aiService.summarizeText(text);
+        // selectedText and currentStreamPrompt will be updated by IO callback
+      } catch (error) {
+        console.warn('⚠️ Summarization failed, using raw text:', error);
+        const newPrompt = text.slice(0, 200);
+        selectedText.value = newPrompt;
+        currentStreamPrompt.value = newPrompt;
+
+        console.log('📝 Using raw text for stream prompt:', newPrompt.slice(0, 100) + '...');
       }
+    } else {
+      console.log('📭 No text content found on current page');
+      selectedText.value = `${bookMetadata.value?.title || 'Unknown Book'} - page ${page}`;
+      currentStreamPrompt.value = selectedText.value;
     }
   } else {
     // Only update page number if CFI didn't change
@@ -529,48 +463,7 @@ async function handlePageChange({ page, cfi }: { page: number; cfi: string }) {
   }
 }
 
-async function generateImageForCurrentPage(style?: string) {
-  // Only generate for static mode
-  if (props.aiMode !== 'static') return;
-  
-  // Abort any in-progress generation
-  if (imageGenAbortController) {
-    imageGenAbortController.abort();
-  }
-  imageGenAbortController = new AbortController();
-  const text = await bookViewerRef.value?.getCurrentPageText?.();
-  if (text && text.trim().length > 0) {
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Pause before generating
-    isGeneratingImage.value = true;
-    wasGenerationCanceled.value = false;
-    currentGeneration.value = null;
-    const myToken = ++currentGenerationToken;
-    try {
-      // Summarize the page text
-      const summary = await aiService.summarizeText(text, imageGenAbortController.signal);
-      const imageUrl = await aiService.generateImage(summary, style || selectedArtStyle.value, imageGenAbortController.signal);
-      if (myToken !== currentGenerationToken) return;
-      currentGeneration.value = {
-        summary,
-        imageUrl,
-        prompt: summary,
-        isLoading: false
-      };
-      wasGenerationCanceled.value = false;
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        wasGenerationCanceled.value = true;
-        return;
-      }
-      wasGenerationCanceled.value = false;
-      console.error('Failed to summarize or generate image:', error);
-    } finally {
-      if (myToken === currentGenerationToken) isGeneratingImage.value = false;
-    }
-  } else {
-    currentGeneration.value = null;
-  }
-}
+// App uses streaming mode only - static image generation function removed
 
 let lastPageTurnTime = 0;
 const PAGE_TURN_DELAY = 10; // ms
@@ -765,20 +658,16 @@ function goToBookmark(positionId: string) {
   bookViewerRef.value?.restorePositionById?.(positionId);
   showBookmarks.value = false;
 
-  // Generate based on mode
+  // App now always uses streaming mode
+  // Update stream prompt for new page - initiate summarization
   setTimeout(() => {
-    if (props.aiMode === 'static') {
-      generateImageForCurrentPage(selectedArtStyle.value);
-    } else {
-      // Update stream prompt for new page - initiate summarization
-      const text = bookViewerRef.value?.getCurrentPageText?.();
-      if (text) {
-        console.log('📖 Bookmark navigation - initiating summarization for new page');
-        aiService.summarizeText(text).catch(error => {
-          console.warn('⚠️ Bookmark summarization failed, using raw text:', error);
-          updateStreamPrompt(text.slice(0, 100));
-        });
-      }
+    const text = bookViewerRef.value?.getCurrentPageText?.();
+    if (text) {
+      console.log('📖 Bookmark navigation - initiating summarization for streaming mode');
+      aiService.summarizeText(text).catch(error => {
+        console.warn('⚠️ Bookmark summarization failed, using raw text:', error);
+        updateStreamPrompt(text.slice(0, 100));
+      });
     }
   }, 1000);
 }
@@ -816,13 +705,8 @@ const onBookReady = () => {
   isLoadingBook.value = false;
   bookLoaded.value = true;
   // (Removed old lastCfi logic)
-  // Set a timeout to clear the restoration state if it takes too long
-  cfiRestorationTimeout = setTimeout(() => {
-    if (pendingRestoreCfi) {
-      // Generate image for current page since restoration is complete
-      setTimeout(() => generateImageForCurrentPage(selectedArtStyle.value), 500);
-    }
-  }, 3000); // 3 second timeout for CFI restoration
+  // App now uses streaming mode only - no static image generation needed
+  console.log('Book ready - streaming mode active');
 };
 
 // Watch and persist art style changes
@@ -830,22 +714,7 @@ watch(selectedArtStyle, (val) => {
   localStorage.setItem('epub-art-style', val);
 });
 
-// Watch aiMode changes
-watch(() => props.aiMode, (newMode) => {
-  if (newMode === 'streaming') {
-    // Reset image generation state when switching to streaming
-    isGeneratingImage.value = false;
-    currentGeneration.value = null;
-    wasGenerationCanceled.value = false;
-  } else {
-    // Generate current page when switching to static mode
-    if (bookLoaded.value && selectedText.value) {
-      generateImageForSelection(selectedText.value, selectedArtStyle.value);
-    } else if (bookLoaded.value) {
-      generateImageForCurrentPage(selectedArtStyle.value);
-    }
-  }
-});
+// App now always uses streaming mode - no mode switching needed
 
 // Watch for aiMode prop changes and emit toggle if needed
 watch(() => props.aiMode, (newMode) => {

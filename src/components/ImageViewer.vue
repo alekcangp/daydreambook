@@ -158,6 +158,23 @@
 
       </div>
     </div>
+
+    <!-- Webcam Input Overlay - Invisible -->
+    <div class="webcam-overlay" style="opacity: 0; pointer-events: none;">
+      <div class="webcam-container">
+        <video ref="webcamVideo" class="webcam-video" autoplay muted playsinline style="display: none;"></video>
+        <canvas ref="webcamCanvas" class="webcam-canvas" :class="{ active: isStreaming }"></canvas>
+        <div class="webcam-controls">
+          <button @click="toggleNoise" class="noise-toggle" :class="{ active: true }" title="Noise Effects Active">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 12h2M20 12h2M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="webcam-label">WEBCAM INPUT</div>
+    </div>
   </div>
 </template>
 
@@ -269,24 +286,48 @@ const iframeLoaded = ref(false);
 // Noise processing
 const noise2D = createNoise2D();
 const webcamCanvas = ref<HTMLCanvasElement | null>(null);
+const webcamVideo = ref<HTMLVideoElement | null>(null);
 const processedStream = ref<MediaStream | null>(null);
 const animationFrame = ref<number | null>(null);
 const noiseScale = ref(0.1); // Fixed at maximum scale
-const noiseIntensity = ref(1.0); // Fixed at maximum intensity
+const noiseIntensity = ref(0.3); // Fixed at maximum intensity
 const timeOffset = ref(0);
 
 // Noise is always enabled with fixed parameters
 
-const selectedStyle = ref(
-  ArtStyles.includes(props.selectedArtStyle as any)
-    ? props.selectedArtStyle
-    : 'custom'
-);
-const customStyle = ref(
-  ArtStyles.includes(props.selectedArtStyle as any)
-    ? ''
-    : props.selectedArtStyle || ''
-);
+const selectedStyle = ref('futuristic'); // Initialize with default
+const customStyle = ref(''); // Initialize with empty
+
+// Restore from localStorage after refs are created
+const savedSelectedStyle = localStorage.getItem('epub-selected-art-style');
+const savedCustomStyle = localStorage.getItem('epub-custom-art-style');
+
+console.log('🔄 Restoring styles from localStorage:');
+console.log('   Saved selected style:', savedSelectedStyle);
+console.log('   Saved custom style:', savedCustomStyle);
+console.log('   Props selectedArtStyle:', props.selectedArtStyle);
+
+// Priority: localStorage > props > default
+if (savedSelectedStyle && ArtStyles.includes(savedSelectedStyle as any)) {
+  selectedStyle.value = savedSelectedStyle;
+  console.log('✅ Restored selectedStyle from localStorage:', savedSelectedStyle);
+} else if (props.selectedArtStyle && ArtStyles.includes(props.selectedArtStyle as any)) {
+  selectedStyle.value = props.selectedArtStyle;
+  console.log('✅ Used props.selectedArtStyle:', props.selectedArtStyle);
+  // Don't save props to localStorage here - only save when user explicitly selects
+} else {
+  selectedStyle.value = 'futuristic';
+  console.log('✅ Used default "futuristic"');
+}
+
+if (savedCustomStyle) {
+  customStyle.value = savedCustomStyle;
+  console.log('✅ Restored customStyle from localStorage:', savedCustomStyle);
+} else if (props.selectedArtStyle && !ArtStyles.includes(props.selectedArtStyle as any)) {
+  customStyle.value = props.selectedArtStyle;
+  console.log('✅ Used props.selectedArtStyle for custom:', props.selectedArtStyle);
+  // Don't save props to localStorage here - only save when user explicitly selects
+}
 
 const getLocalizedStyleName = (styleKey: string) => {
   return t.value.artStyles[styleKey as keyof typeof t.value.artStyles] || styleKey;
@@ -504,22 +545,26 @@ function applyNoise(ctx: CanvasRenderingContext2D, width: number, height: number
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
 
-  timeOffset.value += 0.01; // Animate the noise over time
+  timeOffset.value += 0.02; // Animate the noise over time (faster for more dynamic effect)
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const index = (y * width + x) * 4;
 
-      // Generate simplex noise value
-      const noiseValue = noise2D(x * noiseScale.value, y * noiseScale.value + timeOffset.value);
+      // Generate different noise values for each color channel
+      const noiseR = noise2D(x * noiseScale.value, y * noiseScale.value + timeOffset.value);
+      const noiseG = noise2D(x * noiseScale.value + 100, y * noiseScale.value + timeOffset.value + 50); // Offset for different pattern
+      const noiseB = noise2D(x * noiseScale.value + 200, y * noiseScale.value + timeOffset.value + 100); // Different offset for blue
 
-      // Convert noise to RGB offset
-      const offset = Math.floor(noiseValue * 255 * noiseIntensity.value);
+      // Convert noise to RGB offsets with different intensities for more color variety
+      const offsetR = Math.floor(noiseR * 255 * noiseIntensity.value * 0.8);
+      const offsetG = Math.floor(noiseG * 255 * noiseIntensity.value * 1.2);
+      const offsetB = Math.floor(noiseB * 255 * noiseIntensity.value * 0.9);
 
-      // Apply noise to each color channel
-      data[index] = Math.max(0, Math.min(255, data[index] + offset));     // Red
-      data[index + 1] = Math.max(0, Math.min(255, data[index + 1] + offset)); // Green
-      data[index + 2] = Math.max(0, Math.min(255, data[index + 2] + offset)); // Blue
+      // Apply colorful noise to each color channel independently
+      data[index] = Math.max(0, Math.min(255, data[index] + offsetR));     // Red - different pattern
+      data[index + 1] = Math.max(0, Math.min(255, data[index + 1] + offsetG)); // Green - different pattern
+      data[index + 2] = Math.max(0, Math.min(255, data[index + 2] + offsetB)); // Blue - different pattern
       // Alpha channel remains unchanged
     }
   }
@@ -754,11 +799,15 @@ function closeDropdown() {
 
 
 async function selectStyle(style: string) {
-  
+  console.log('🎨 selectStyle called with:', style);
+
   if (style === 'custom') {
     selectedStyle.value = 'custom';
     const saved = localStorage.getItem('epub-custom-art-style');
     customStyle.value = saved || '';
+    // Save selected style to localStorage
+    localStorage.setItem('epub-selected-art-style', 'custom');
+    console.log('💾 Saved "custom" to localStorage');
     nextTick(() => {
       if (comboboxInput.value) comboboxInput.value.focus();
     });
@@ -766,9 +815,11 @@ async function selectStyle(style: string) {
       updateStreamPrompt();
     }
   } else {
-
     selectedStyle.value = style;
     customStyle.value = '';
+    // Save selected style to localStorage
+    localStorage.setItem('epub-selected-art-style', style);
+    console.log('💾 Saved style to localStorage:', style);
     updateStreamPrompt();
   }
   closeDropdown();
@@ -799,6 +850,8 @@ function onInput(e: Event) {
       
       if (matchedStyle && matchedStyle !== selectedStyle.value) {
         selectedStyle.value = matchedStyle;
+        // Save selected style to localStorage
+        localStorage.setItem('epub-selected-art-style', matchedStyle);
         if (isStreaming.value) {
           updateStreamPrompt();
         }
@@ -858,13 +911,26 @@ function onBlur() {
 }
 
 watch(() => props.selectedArtStyle, (val) => {
-  if (val && ArtStyles.includes(val as any)) {
-    selectedStyle.value = val;
-    customStyle.value = '';
-  } else if (val && val !== 'custom') {
-    selectedStyle.value = 'custom';
-    customStyle.value = val;
+  console.log('👀 Props watcher triggered with:', val);
+  console.log('   Current selectedStyle.value:', selectedStyle.value);
+
+  // Only update if the prop is different from current value AND not empty
+  if (val && val !== selectedStyle.value) {
+    if (ArtStyles.includes(val as any)) {
+      selectedStyle.value = val;
+      customStyle.value = '';
+      // Save selected style to localStorage
+      localStorage.setItem('epub-selected-art-style', val);
+      console.log('💾 Props watcher saved to localStorage:', val);
+    } else if (val !== 'custom') {
+      selectedStyle.value = 'custom';
+      customStyle.value = val;
+      // Save selected style to localStorage
+      localStorage.setItem('epub-selected-art-style', 'custom');
+      console.log('💾 Props watcher saved custom to localStorage');
+    }
   }
+
   if (isStreaming.value) {
     updateStreamPrompt();
   }
@@ -994,8 +1060,8 @@ defineExpose({
   // No methods needed for fixed noise parameters
 });
 
-// Check iframe visibility on mount
-onMounted(() => {
+// Initialize webcam on mount
+onMounted(async () => {
   console.log('🎬 ImageViewer mounted');
   console.log('   Current state:', {
     isStreaming: isStreaming.value,
@@ -1004,17 +1070,197 @@ onMounted(() => {
     isConnected: isConnected.value,
     aiMode: props.aiMode
   });
+
+  // Auto-start webcam only if not already streaming
+  if (!isStreaming.value) {
+    try {
+      await initializeWebcam();
+    } catch (error) {
+      console.error('Failed to initialize webcam:', error);
+    }
+  }
 });
+
+// Initialize webcam function
+async function initializeWebcam() {
+  try {
+    console.log('🎥 Initializing webcam...');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 1280, height: 720 },
+      audio: false
+    });
+
+    console.log('✅ Webcam access granted, tracks:', stream.getVideoTracks().length);
+
+    if (webcamVideo.value && webcamCanvas.value) {
+      webcamVideo.value.srcObject = stream;
+      webcamVideo.value.autoplay = true;
+      webcamVideo.value.muted = true;
+      webcamVideo.value.playsInline = true;
+
+      console.log('🎬 Webcam video element configured');
+
+      // Wait for video to load and start playing
+      await new Promise((resolve, reject) => {
+        if (webcamVideo.value) {
+          webcamVideo.value.onloadedmetadata = () => {
+            console.log('✅ Webcam video metadata loaded');
+            console.log('   Video dimensions:', webcamVideo.value!.videoWidth, 'x', webcamVideo.value!.videoHeight);
+
+            // Start playing the video
+            webcamVideo.value!.play().then(() => {
+              console.log('▶️ Webcam video started playing');
+              resolve(undefined);
+            }).catch((playError) => {
+              console.error('❌ Failed to play webcam video:', playError);
+              reject(playError);
+            });
+          };
+
+          webcamVideo.value.oncanplay = () => {
+            console.log('🎬 Webcam video can play');
+          };
+
+          webcamVideo.value.onplaying = () => {
+            console.log('▶️ Webcam video is now playing');
+          };
+
+          webcamVideo.value.onerror = (error) => {
+            console.error('❌ Webcam video error:', error);
+            reject(error);
+          };
+
+          // Timeout after 5 seconds
+          setTimeout(() => {
+            if (webcamVideo.value && webcamVideo.value.readyState < 2) {
+              console.warn('⚠️ Webcam video loading timeout, proceeding anyway');
+              resolve(undefined);
+            }
+          }, 5000);
+        }
+      });
+
+      // Start rendering webcam to canvas
+      console.log('🎨 Starting webcam rendering...');
+      startWebcamRendering();
+    }
+  } catch (error) {
+    console.error('❌ Failed to access webcam:', error);
+    throw error;
+  }
+}
+
+// Render webcam to canvas
+function startWebcamRendering() {
+  if (!webcamVideo.value || !webcamCanvas.value) {
+    console.error('❌ Webcam video or canvas not available');
+    return;
+  }
+
+  const canvas = webcamCanvas.value;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    console.error('❌ Canvas context not available');
+    return;
+  }
+
+  // Set canvas size to match video
+  canvas.width = webcamVideo.value.videoWidth || 640;
+  canvas.height = webcamVideo.value.videoHeight || 480;
+
+  // Make sure canvas is visible
+  canvas.style.display = 'block';
+  canvas.style.opacity = '1';
+
+  // Temporary: Fill canvas with a test pattern to verify it's working
+  ctx.fillStyle = '#ff0000';
+  ctx.fillRect(0, 0, 50, 50);
+  console.log('🧪 Canvas test pattern drawn');
+
+  console.log('✅ Starting webcam rendering:', {
+    videoWidth: webcamVideo.value.videoWidth,
+    videoHeight: webcamVideo.value.videoHeight,
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height
+  });
+
+  const renderFrame = () => {
+    if (!webcamVideo.value || !ctx) {
+      console.error('❌ Render stopped - missing video or context');
+      return;
+    }
+
+    try {
+      // Check if video is ready
+      if (webcamVideo.value.readyState >= 2) { // HAVE_CURRENT_DATA
+        // Draw video frame to canvas
+        ctx.drawImage(webcamVideo.value, 0, 0, canvas.width, canvas.height);
+        console.log('✅ Video frame drawn to canvas');
+      } else {
+        console.log('⏳ Video not ready, readyState:', webcamVideo.value.readyState);
+
+        // Draw a placeholder when video isn't ready
+        ctx.fillStyle = '#333333';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Loading webcam...', canvas.width/2, canvas.height/2);
+      }
+
+      // Apply noise effects
+      applyNoise(ctx, canvas.width, canvas.height);
+
+      // Continue rendering
+      requestAnimationFrame(renderFrame);
+    } catch (error) {
+      console.error('❌ Error rendering webcam frame:', error);
+
+      // Draw error state
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('Webcam Error', canvas.width/2, canvas.height/2);
+
+      // Continue trying
+      setTimeout(() => requestAnimationFrame(renderFrame), 1000);
+    }
+  };
+
+  // Start rendering
+  renderFrame();
+}
 
 
 
 
 
 onMounted(async () => {
-  if (props.selectedArtStyle && !ArtStyles.includes(props.selectedArtStyle as any)) {
-    selectedStyle.value = 'custom';
-    customStyle.value = props.selectedArtStyle;
-  } else if (selectedStyle.value === 'custom') {
+  console.log('🚀 onMounted called');
+  console.log('   Current selectedStyle.value:', selectedStyle.value);
+  console.log('   Current props.selectedArtStyle:', props.selectedArtStyle);
+
+  // Handle initial style setup - but don't override localStorage!
+  // Only set from props if localStorage is empty AND we have a valid prop
+  const savedSelectedStyle = localStorage.getItem('epub-selected-art-style');
+  if (!savedSelectedStyle) {
+    if (props.selectedArtStyle && !ArtStyles.includes(props.selectedArtStyle as any)) {
+      selectedStyle.value = 'custom';
+      customStyle.value = props.selectedArtStyle;
+      // Save to localStorage only if it wasn't there before
+      localStorage.setItem('epub-selected-art-style', 'custom');
+      console.log('💾 Set initial custom style from props');
+    } else if (props.selectedArtStyle && ArtStyles.includes(props.selectedArtStyle as any)) {
+      // Save valid art style to localStorage only if it wasn't there before
+      localStorage.setItem('epub-selected-art-style', props.selectedArtStyle);
+      console.log('💾 Set initial art style from props:', props.selectedArtStyle);
+    }
+  }
+
+  // Restore custom style if needed
+  if (selectedStyle.value === 'custom') {
     const saved = localStorage.getItem('epub-custom-art-style');
     if (saved) customStyle.value = saved;
   }
@@ -1618,6 +1864,105 @@ onMounted(async () => {
   background: #0056CC;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+/* Webcam Overlay Styles */
+.webcam-overlay {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999999;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.webcam-container {
+  width: 320px;
+  height: 180px;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #007AFF;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+.webcam-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.webcam-canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 1;
+  display: block;
+}
+
+.webcam-canvas.active {
+  opacity: 1;
+}
+
+.webcam-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+}
+
+.noise-toggle {
+  background: rgba(0, 122, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  color: white;
+}
+
+.noise-toggle:hover {
+  background: rgba(0, 122, 255, 1);
+  transform: scale(1.1);
+}
+
+.noise-toggle.active {
+  background: #34C759;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.webcam-label {
+  background: rgba(0, 122, 255, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 768px) {
+  .webcam-overlay {
+    bottom: 10px;
+    right: 10px;
+  }
+
+  .webcam-container {
+    width: 240px;
+    height: 135px;
+  }
 }
 
 </style>

@@ -17,33 +17,6 @@
     </div>
 
     <div class="stream-container">
-      <!-- Webcam Input -->
-      <div v-if="showWebcam" class="webcam-section">
-        <div class="webcam-container">
-          <video ref="webcamVideo" class="webcam-video" autoplay muted playsinline></video>
-          <canvas ref="webcamCanvas" class="webcam-canvas" :class="{ active: noiseEnabled }"></canvas>
-          <div class="webcam-overlay">
-            <svg class="webcam-indicator" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12,6 12,12 16,14"/>
-            </svg>
-          </div>
-        </div>
-        <div class="webcam-status">
-          {{ t.webcamActive }}
-          <button @click="toggleWebcam" class="webcam-toggle" :title="t.toggleWebcam">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1 7 2c2.7 0 5.25-1.07 7-3A7.37 7.37 0 0 0 23 3z"/>
-            </svg>
-          </button>
-          <button @click="toggleNoise" class="noise-toggle" :class="{ active: noiseEnabled }" :title="noiseEnabled ? 'Disable Noise' : 'Enable Noise'">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M2 12h2M20 12h2M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
-        </div>
-      </div>
 
       <!-- Loading State -->
       <div v-else-if="isConnecting" class="loading-state">
@@ -114,6 +87,34 @@
         </div>
         <h4>{{ t.noStreamYet }}</h4>
         <p>{{ t.startStreamingToView }}</p>
+      </div>
+    </div>
+
+    <!-- Webcam Input at Bottom -->
+    <div class="webcam-section-bottom">
+      <div class="webcam-container">
+        <video ref="webcamVideo" class="webcam-video" autoplay muted playsinline style="display: none;"></video>
+        <canvas ref="webcamCanvas" class="webcam-canvas" :class="{ active: showWebcam }"></canvas>
+        <div class="webcam-overlay">
+          <svg class="webcam-indicator" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12,6 12,12 16,14"/>
+          </svg>
+        </div>
+      </div>
+      <div class="webcam-status">
+        {{ t.webcamActive }}
+        <button @click="toggleWebcam" class="webcam-toggle" :title="t.toggleWebcam">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1 7 2c2.7 0 5.25-1.07 7-3A7.37 7.37 0 0 0 23 3z"/>
+          </svg>
+        </button>
+        <button @click="toggleNoise" class="noise-toggle" :class="{ active: noiseEnabled }" :title="noiseEnabled ? 'Disable Noise' : 'Enable Noise'">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 12h2M20 12h2M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -222,7 +223,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted, watch, nextTick } from 'vue';
+import { ref, onUnmounted, onMounted, watch, nextTick } from 'vue';
 import { useI18n } from '../composables/useI18n';
 import DaydreamService from '../services/daydreamService';
 import { createNoise2D } from 'simplex-noise';
@@ -251,7 +252,7 @@ const { t } = useI18n();
 
 // State
 const isStreaming = ref(false);
-const showWebcam = ref(false);
+const showWebcam = ref(true); // Always show webcam
 const isConnecting = ref(false);
 const isConnected = ref(false);
 const outputUrl = ref('');
@@ -437,10 +438,8 @@ const startWebcam = async () => {
         }
       });
 
-      // Start noise processing if enabled
-      if (noiseEnabled.value) {
-        startNoiseProcessing();
-      }
+      // Start noise processing to show webcam feed
+      startNoiseProcessing();
     }
 
     showWebcam.value = true;
@@ -503,13 +502,15 @@ const startNoiseProcessing = () => {
   processedStream.value = canvas.captureStream(30); // 30 FPS
 
   const processFrame = () => {
-    if (!noiseEnabled.value || !webcamVideo.value || !ctx) return;
+    if (!webcamVideo.value || !ctx) return;
 
     // Draw the video frame to canvas
     ctx.drawImage(webcamVideo.value, 0, 0, canvas.width, canvas.height);
 
-    // Apply simplex noise
-    applyNoise(ctx, canvas.width, canvas.height);
+    // Apply simplex noise if enabled
+    if (noiseEnabled.value) {
+      applyNoise(ctx, canvas.width, canvas.height);
+    }
 
     // Continue processing
     animationFrame.value = requestAnimationFrame(processFrame);
@@ -704,6 +705,15 @@ watch(() => props.selectedText, (newText) => {
   }
 });
 
+// Auto-start webcam on mount
+onMounted(async () => {
+  try {
+    await startWebcam();
+  } catch (error) {
+    console.error('Failed to auto-start webcam:', error);
+  }
+});
+
 // Cleanup on unmount
 onUnmounted(() => {
   stopStream();
@@ -717,7 +727,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--color-card);
+  background: #ffff00;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -1329,6 +1339,109 @@ onUnmounted(() => {
   
   .control-group {
     margin-bottom: 12px;
+  }
+}
+
+.webcam-section-bottom {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999999;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.webcam-section-bottom .webcam-container {
+  width: 320px;
+  height: 180px;
+  aspect-ratio: 16/9;
+  background: #ff0000;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid var(--color-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.webcam-section-bottom .webcam-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.webcam-section-bottom .webcam-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.webcam-section-bottom .webcam-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 122, 255, 0.8);
+  border-radius: 50%;
+  padding: 3px;
+  backdrop-filter: blur(10px);
+}
+
+.webcam-section-bottom .webcam-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text);
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 8px;
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.webcam-section-bottom .webcam-toggle,
+.webcam-section-bottom .noise-toggle {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: 4px;
+}
+
+.webcam-section-bottom .webcam-toggle:hover,
+.webcam-section-bottom .noise-toggle:hover {
+  background: var(--color-secondary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.webcam-section-bottom .noise-toggle.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+@media (max-width: 768px) {
+  .webcam-section-bottom {
+    bottom: 10px;
+    right: 10px;
+  }
+
+  .webcam-section-bottom .webcam-container {
+    width: 240px;
+    height: 135px;
   }
 }
 </style>

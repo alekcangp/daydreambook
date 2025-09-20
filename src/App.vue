@@ -8,26 +8,19 @@
       />
     </main>
     
-    <!-- Mode Toggle Button -->
-    <button
+    <!-- Mode Indicator - App always uses streaming mode -->
+    <div
       v-if="showInfo"
-      @click="toggleAIMode"
-      class="mode-toggle-btn"
-      :class="{ 'streaming-mode': aiMode === 'streaming' }"
-      :title="aiMode === 'streaming' ? t.staticMode : t.streamingMode"
+      class="mode-indicator"
+      title="App uses streaming mode only"
     >
-      <svg v-if="aiMode === 'static'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-        <circle cx="8.5" cy="8.5" r="1.5"/>
-        <polyline points="21,15 16,10 5,21"/>
-      </svg>
-      <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
         <polyline points="17,8 12,13 7,8"/>
         <path d="M12 20a1 1 0 0 0 0-2 1 1 0 0 0 0 2z"/>
       </svg>
-      <span>{{ aiMode === 'streaming' ? t.staticMode : t.streamingMode }}</span>
-    </button>
+      <span>Streaming Mode</span>
+    </div>
 
     
     <div class="app-info-overlay" v-if="showInfo">
@@ -86,14 +79,9 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import EpubReader from './components/EpubReader.vue';
-import { useI18n } from './composables/useI18n';
 
-const { t } = useI18n();
-const aiMode = ref<'static' | 'streaming'>('static');
-
-const toggleAIMode = () => {
-  aiMode.value = aiMode.value === 'static' ? 'streaming' : 'static';
-};
+// App now always uses streaming mode
+const aiMode = ref<'static' | 'streaming'>('streaming');
 
 const showInfo = ref(false);
 const epubReaderRef = ref();
@@ -110,7 +98,7 @@ const epubReaderRef = ref();
   position: relative;
 }
 
-.mode-toggle-btn {
+.mode-indicator {
   position: absolute;
   top: 20px;
   right: 20px;
@@ -119,39 +107,19 @@ const epubReaderRef = ref();
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(0, 122, 255, 0.1);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 122, 255, 0.2);
+  border: 1px solid rgba(0, 122, 255, 0.4);
   border-radius: 12px;
-  color: #1D1D1F;
+  color: #007AFF;
   font-weight: 600;
   font-size: 14px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
   min-width: 140px;
   justify-content: center;
 }
 
-.mode-toggle-btn:hover {
-  background: white;
-  border-color: rgba(0, 122, 255, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-}
-
-.mode-toggle-btn.streaming-mode {
-  background: rgba(0, 122, 255, 0.1);
-  border-color: rgba(0, 122, 255, 0.4);
-  color: #007AFF;
-}
-
-.mode-toggle-btn.streaming-mode:hover {
-  background: rgba(0, 122, 255, 0.15);
-  color: #0056CC;
-}
-
-.mode-toggle-btn svg {
+.mode-indicator svg {
   flex-shrink: 0;
 }
 
